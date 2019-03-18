@@ -38,6 +38,7 @@ DWORD GetSizeOfImage( void );
 void* g_ImageStartAddr = nullptr;
 void* g_ImageEndAddr = nullptr;
 
+/*
 LONG NTAPI ExceptionHandler(_EXCEPTION_POINTERS *ExceptionInfo)
 {
 	//making sure to only process exceptions from the manual mapped code:
@@ -55,6 +56,31 @@ LONG NTAPI ExceptionHandler(_EXCEPTION_POINTERS *ExceptionInfo)
 		{
 			//calling the compiler generated function to do the work :D
 			EXCEPTION_DISPOSITION ExceptionDisposition = EH4_ExceptionHandler( ExceptionInfo->ExceptionRecord, &EH4->SubRecord,	ExceptionInfo->ContextRecord, nullptr );
+			if ( ExceptionDisposition == ExceptionContinueExecution )
+				return EXCEPTION_CONTINUE_EXECUTION;
+		}
+	}
+	return EXCEPTION_CONTINUE_SEARCH;
+}
+*/
+
+//the exception handler function above works for other exceptions but is labed only for SEH4 since its easier to understand that way
+//so this is a more generically named function
+LONG NTAPI ExceptionHandler(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+	//making sure to only process exceptions from the manual mapped code:
+	PVOID ExceptionAddress = ExceptionInfo->ExceptionRecord->ExceptionAddress;
+	if ( ExceptionAddress < g_ImageStartAddr || ExceptionAddress > g_ImageEndAddr )
+		return EXCEPTION_CONTINUE_SEARCH;
+	
+	DWORD RegisterESP = ExceptionInfo->ContextRecord->Esp;
+	EXCEPTION_REGISTRATION_RECORD* pFs = (EXCEPTION_REGISTRATION_RECORD*) __readfsdword( 0 ); // mov pFs, large fs:0 ; <= reading the segment register
+	if ( (DWORD_PTR)pFs > (RegisterESP-0x10000) && (DWORD_PTR)pFs < (RegisterESP+0x10000) ) //validate pointer
+	{
+		EXCEPTION_ROUTINE* ExceptionHandlerRoutine = pFs->Handler;
+		if ( ExceptionHandlerRoutine > g_ImageStartAddr && ExceptionHandlerRoutine < g_ImageEndAddr ) //validate pointer
+		{
+			EXCEPTION_DISPOSITION ExceptionDisposition = ExceptionHandlerRoutine( ExceptionInfo->ExceptionRecord, pFs, ExceptionInfo->ContextRecord, nullptr );
 			if ( ExceptionDisposition == ExceptionContinueExecution )
 				return EXCEPTION_CONTINUE_EXECUTION;
 		}
