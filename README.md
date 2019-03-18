@@ -273,3 +273,42 @@ LONG NTAPI ExceptionHandler(_EXCEPTION_POINTERS *ExceptionInfo)
 	return EXCEPTION_CONTINUE_SEARCH;
 }
 ```
+
+# Broaden the exception handler
+the exception handler function above works for other exceptions but is labed only for SEH4 since its easier to understand that way<br />
+so this is a more generically named function<br />
+
+
+```cpp
+LONG NTAPI ExceptionHandler(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+	PVOID ExceptionAddress = ExceptionInfo->ExceptionRecord->ExceptionAddress;
+	if ( ExceptionAddress < g_ImageStartAddr || ExceptionAddress > g_ImageEndAddr )
+		return EXCEPTION_CONTINUE_SEARCH;
+	
+	DWORD RegisterESP = ExceptionInfo->ContextRecord->Esp;
+	EXCEPTION_REGISTRATION_RECORD* pFs = (EXCEPTION_REGISTRATION_RECORD*) __readfsdword( 0 ); // mov pFs, large fs:0 ; <= reading the segment register
+	if ( (DWORD_PTR)pFs > (RegisterESP-0x10000) && (DWORD_PTR)pFs < (RegisterESP+0x10000) )
+	{
+		EXCEPTION_ROUTINE* ExceptionHandlerRoutine = pFs->Handler;
+		if ( ExceptionHandlerRoutine > g_ImageStartAddr && ExceptionHandlerRoutine < g_ImageEndAddr )
+		{
+			EXCEPTION_DISPOSITION ExceptionDisposition = ExceptionHandlerRoutine( ExceptionInfo->ExceptionRecord, pFs, ExceptionInfo->ContextRecord, nullptr );
+			if ( ExceptionDisposition == ExceptionContinueExecution )
+				return EXCEPTION_CONTINUE_EXECUTION;
+		}
+	}
+	return EXCEPTION_CONTINUE_SEARCH;
+}
+```
+
+so C++ exceptions are supported too ;)<br />
+
+
+```cpp
+try{
+	*(DWORD*)0x123 = 0x1337;
+}catch(...){
+	MessageBoxA( 0, "__except","__except",0);
+};
+```
